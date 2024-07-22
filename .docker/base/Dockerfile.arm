@@ -29,33 +29,33 @@ RUN set -eux; apt-get update; \
 COPY server/ .
 RUN ./build
 
-#
+
 # STAGE 2: CLIENT
-#
-#
+
+
 # Because client builds fail in Github Actions, therefor we build it outside of Docker.
+
+FROM node:18-bullseye-slim as client
+
+# install dependencies
+RUN set -eux; apt-get update; \
+    apt-get install -y --no-install-recommends python2 build-essential
+
+WORKDIR /src
+
 #
-# FROM node:18-bullseye-slim as client
-# 
-# # install dependencies
-# RUN set -eux; apt-get update; \
-#     apt-get install -y --no-install-recommends python2 build-essential
-# 
-# WORKDIR /src
-# 
-# #
-# # install dependencies
-# COPY client/package*.json ./
-# RUN npm install
-# 
-# #
-# # build client
-# COPY client/ .
-# RUN npm run build
+# install dependencies
+COPY client/package*.json ./
+RUN npm install
+
 #
-#
+# build client
+COPY client/ .
+RUN npm run build
+
+
 # STAGE 3: RUNTIME
-#
+
 FROM debian:bullseye-slim
 
 #
@@ -137,8 +137,8 @@ ENV NEKO_BIND=:8080
 #
 # copy static files from previous stages
 COPY --from=server /src/bin/neko /usr/bin/neko
-# COPY --from=client /src/dist/ /var/www
-COPY client/dist/ /var/www
+COPY --from=client /src/dist/ /var/www
+# COPY client/dist/ /var/www
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=8 \
     CMD wget -O - http://localhost:${NEKO_BIND#*:}/health || exit 1

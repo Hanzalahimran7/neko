@@ -1,0 +1,17 @@
+#!/bin/sh
+
+if [ -f ".env.default" ]
+then
+  export $(cat .env.default | sed 's/#.*//g' | xargs)
+fi
+
+if [ -f ".env" ]
+then
+  export $(cat .env | sed 's/#.*//g' | xargs)
+fi
+
+echo $SERVER_TAG
+
+./build $SERVER_TAG
+
+./start-server

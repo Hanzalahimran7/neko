@@ -13,7 +13,7 @@
           class="overlay"
           tabindex="0"
           data-gramm="false"
-          :style="{ pointerEvents: hosting ? 'auto' : 'none' }"
+          :style="{ pointerEvents: hosting ? 'auto' : 'none', cursor: 'none' }"
           @click.stop.prevent
           @contextmenu.stop.prevent
           @wheel.stop.prevent="onWheel"
@@ -34,7 +34,7 @@
         </div>
         <div ref="aspect" class="player-aspect" />
       </div>
-      <ul v-if="!fullscreen && !hideControls" class="video-menu top">
+      <!-- <ul v-if="!fullscreen && !hideControls" class="video-menu top">
         <li><i @click.stop.prevent="requestFullscreen" class="fas fa-expand"></i></li>
         <li v-if="admin"><i @click.stop.prevent="openResolution" class="fas fa-desktop"></i></li>
         <li v-if="!controlLocked && !implicitHosting" :class="extraControls || 'extra-control'">
@@ -43,8 +43,8 @@
             @click.stop.prevent="toggleControl"
           />
         </li>
-      </ul>
-      <ul v-if="!fullscreen && !hideControls" class="video-menu bottom">
+      </ul> -->
+      <!-- <ul v-if="!fullscreen && !hideControls" class="video-menu bottom">
         <li v-if="hosting && (!clipboard_read_available || !clipboard_write_available)">
           <i @click.stop.prevent="openClipboard" class="fas fa-clipboard"></i>
         </li>
@@ -56,7 +56,7 @@
             class="fas fa-external-link-alt"
           />
         </li>
-      </ul>
+      </ul> -->
       <neko-resolution ref="resolution" v-if="admin" />
       <neko-clipboard ref="clipboard" v-if="hosting && (!clipboard_read_available || !clipboard_write_available)" />
     </div>

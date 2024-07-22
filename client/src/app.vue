@@ -5,9 +5,9 @@
     </template>
     <template v-else>
       <main class="neko-main">
-        <div v-if="!videoOnly" class="header-container">
+        <!-- <div v-if="!videoOnly" class="header-container">
           <neko-header />
-        </div>
+        </div> -->
         <div class="video-container">
           <neko-video
             ref="video"
@@ -16,7 +16,7 @@
             @control-attempt="controlAttempt"
           />
         </div>
-        <div v-if="!videoOnly" class="room-container">
+        <!-- <div v-if="!videoOnly" class="room-container">
           <neko-members />
           <div class="room-menu">
             <div class="settings">
@@ -29,11 +29,11 @@
               <neko-emotes />
             </div>
           </div>
-        </div>
+        </div> -->
       </main>
-      <neko-side v-if="!videoOnly && side" />
+      <!-- <neko-side v-if="!videoOnly && side" /> -->
       <neko-connect v-if="!connected" />
-      <neko-about v-if="about" />
+      <!-- <neko-about v-if="about" /> -->
       <notifications
         v-if="!videoOnly"
         group="neko"
