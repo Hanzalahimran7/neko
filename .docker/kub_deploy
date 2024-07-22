@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# Apply services
+kubectl apply -f tcp-service.yaml
+kubectl apply -f udp-service.yaml
+
+# Wait for the services to be assigned external IPs (adjust time if needed)
+echo "Waiting for services to be assigned external IPs..."
+sleep 50
+
+# Get the external IP of the UDP service
+UDP_EXTERNAL_IP=$(kubectl get service neko-dev-udp-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+# Check if IP was found
+if [ -z "$UDP_EXTERNAL_IP" ]; then
+  echo "External IP not found. Ensure the service is correctly configured and has an external IP assigned."
+  exit 1
+fi
+
+echo "External IP found: $UDP_EXTERNAL_IP"
+
+# Update the deployment.yaml with the external IP
+sed -i "s/UDP_EXTERNAL_IP/${UDP_EXTERNAL_IP}/g" deployment.yaml
+
+# Apply the deployment
+kubectl apply -f deployment.yaml
+
+echo "Deployment applied successfully."
