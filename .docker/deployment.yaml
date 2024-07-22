@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: neko-dev
-        image: gcr.io/cogent-task-430211-d5/neko:latest
+        image: DOCKER_IMAGE_TAG
         ports:
         - name: http
           containerPort: 8080

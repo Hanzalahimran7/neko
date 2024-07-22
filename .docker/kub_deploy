@@ -1,5 +1,50 @@
 #!/bin/bash
 
+# Exit immediately if a command exits with a non-zero status
+set -e
+
+# Usage function
+usage() {
+  echo "Usage: $0 -p PROJECT_ID"
+  exit 1
+}
+
+# Parse arguments
+while getopts "p:" opt; do
+  case ${opt} in
+    p )
+      PROJECT_ID=$OPTARG
+      ;;
+    * )
+      usage
+      ;;
+  esac
+done
+
+if [ -z "$PROJECT_ID" ]; then
+  usage
+fi
+
+# Variables
+CLUSTER_NAME="neko-cluster"
+COMPUTE_ZONE="europe-west2-a"
+IMAGE_NAME="hanzalahimran7/neko:chromium"
+DOCKER_DIR=".docker"
+DOCKER_BUILD_SCRIPT="build"
+DOCKER_IMAGE_TAG="gcr.io/$PROJECT_ID/hanzalahimran7"
+
+# Create a Kubernetes cluster
+gcloud container clusters create $CLUSTER_NAME --zone $COMPUTE_ZONE
+
+# # Get cluster credentials
+gcloud container clusters get-credentials $CLUSTER_NAME --zone $COMPUTE_ZONE
+
+./build chromium
+
+docker tag $IMAGE_NAME $DOCKER_IMAGE_TAG:latest
+
+docker push $DOCKER_IMAGE_TAG
+
 # Apply services
 kubectl apply -f tcp-service.yaml
 kubectl apply -f udp-service.yaml
@@ -22,7 +67,10 @@ echo "External IP found: $UDP_EXTERNAL_IP"
 # Update the deployment.yaml with the external IP
 sed -i "s/UDP_EXTERNAL_IP/${UDP_EXTERNAL_IP}/g" deployment.yaml
 
+sed -i "s|DOCKER_IMAGE_TAG|${DOCKER_IMAGE_TAG}|g" deployment.yaml
+
 # Apply the deployment
 kubectl apply -f deployment.yaml
+TCP_IP=$(kubectl get service neko-dev-tcp-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
 echo "Deployment applied successfully."
