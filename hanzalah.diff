@@ -1,0 +1,511 @@
+[1mdiff --git a/.docker/.env.default b/.docker/.env.default[m
+[1mindex b15828d..1f72a6d 100644[m
+[1m--- a/.docker/.env.default[m
+[1m+++ b/.docker/.env.default[m
+[36m@@ -4,15 +4,15 @@[m
+ [m
+ # this is how will be your images called. you can change it to your fork.[m
+ # only need to do this once. here.[m
+[31m-BUILD_IMAGE="m1k1o/neko"[m
+[32m+[m[32mBUILD_IMAGE="hanzalahimran7/neko"[m
+ [m
+ # this is where your services will be acessible[m
+ CLIENT_PORT=8080[m
+ SERVER_PORT=8081[m
+ [m
+ # on which image you want to test it[m
+[31m-SERVER_TAG="chromium"[m
+[32m+[m[32mSERVER_TAG="arm-chromium"[m
+ [m
+ # this is needed for WebRTC. specify your local IP address and free UDP port range.[m
+[31m-SERVER_EPR=55000-55009[m
+[31m-SERVER_IP=10.8.0.1[m
+[32m+[m[32mSERVER_EPR="55000-55009"[m
+[32m+[m[32mSERVER_IP=192.168.10.5[m
+[1mdiff --git a/.docker/base/Dockerfile.arm b/.docker/base/Dockerfile.arm[m
+[1mindex 1ebef51..00e0a04 100644[m
+[1m--- a/.docker/base/Dockerfile.arm[m
+[1m+++ b/.docker/base/Dockerfile.arm[m
+[36m@@ -29,33 +29,33 @@[m [mRUN set -eux; apt-get update; \[m
+ COPY server/ .[m
+ RUN ./build[m
+ [m
+[31m-#[m
+[32m+[m
+ # STAGE 2: CLIENT[m
+[31m-#[m
+[31m-#[m
+[32m+[m
+[32m+[m
+ # Because client builds fail in Github Actions, therefor we build it outside of Docker.[m
+[32m+[m
+[32m+[m[32mFROM node:18-bullseye-slim as client[m
+[32m+[m
+[32m+[m[32m# install dependencies[m
+[32m+[m[32mRUN set -eux; apt-get update; \[m
+[32m+[m[32m    apt-get install -y --no-install-recommends python2 build-essential[m
+[32m+[m
+[32m+[m[32mWORKDIR /src[m
+[32m+[m
+ #[m
+[31m-# FROM node:18-bullseye-slim as client[m
+[31m-# [m
+[31m-# # install dependencies[m
+[31m-# RUN set -eux; apt-get update; \[m
+[31m-#     apt-get install -y --no-install-recommends python2 build-essential[m
+[31m-# [m
+[31m-# WORKDIR /src[m
+[31m-# [m
+[31m-# #[m
+[31m-# # install dependencies[m
+[31m-# COPY client/package*.json ./[m
+[31m-# RUN npm install[m
+[31m-# [m
+[31m-# #[m
+[31m-# # build client[m
+[31m-# COPY client/ .[m
+[31m-# RUN npm run build[m
+[31m-#[m
+[32m+[m[32m# install dependencies[m
+[32m+[m[32mCOPY client/package*.json ./[m
+[32m+[m[32mRUN npm install[m
+[32m+[m
+ #[m
+[32m+[m[32m# build client[m
+[32m+[m[32mCOPY client/ .[m
+[32m+[m[32mRUN npm run build[m
+[32m+[m
+[32m+[m
+ # STAGE 3: RUNTIME[m
+[31m-#[m
+[32m+[m
+ FROM debian:bullseye-slim[m
+ [m
+ #[m
+[36m@@ -137,8 +137,8 @@[m [mENV NEKO_BIND=:8080[m
+ #[m
+ # copy static files from previous stages[m
+ COPY --from=server /src/bin/neko /usr/bin/neko[m
+[31m-# COPY --from=client /src/dist/ /var/www[m
+[31m-COPY client/dist/ /var/www[m
+[32m+[m[32mCOPY --from=client /src/dist/ /var/www[m
+[32m+[m[32m# COPY client/dist/ /var/www[m
+ [m
+ HEALTHCHECK --interval=10s --timeout=5s --retries=8 \[m
+     CMD wget -O - http://localhost:${NEKO_BIND#*:}/health || exit 1[m
+[1mdiff --git a/.docker/build b/.docker/build[m
+[1mindex 2e28849..54baa85 100755[m
+[1m--- a/.docker/build[m
+[1m+++ b/.docker/build[m
+[36m@@ -34,6 +34,18 @@[m [mthen[m
+   exit 0[m
+ fi[m
+ [m
+[32m+[m[32m# Function to check if a Docker image exists locally[m
+[32m+[m[32mimage_exists() {[m
+[32m+[m[32m    local image_name=$1[m
+[32m+[m[32m    local image_tag=$2[m
+[32m+[m
+[32m+[m[32m    # Check if the image with the specified tag exists[m
+[32m+[m[32m    if docker images --format '{{.Repository}}:{{.Tag}}' | grep -q "^${image_name}:${image_tag}$"; then[m
+[32m+[m[32m        return 0  # Image exists[m
+[32m+[m[32m    else[m
+[32m+[m[32m        return 1  # Image does not exist[m
+[32m+[m[32m    fi[m
+[32m+[m[32m}[m
+ [m
+ build_client() {[m
+   docker build -t neko-dev-client -f base/Dockerfile --target client "${BASE}"[m
+[36m@@ -107,19 +119,38 @@[m [mbuild_nvidia() {[m
+   fi[m
+ }[m
+ [m
+[32m+[m[32mcheck_and_build_base_image() {[m
+[32m+[m[32m  local platform=$1[m
+[32m+[m
+[32m+[m[32m  if ! image_exists "${BUILD_IMAGE}" "${platform}-base"; then[m
+[32m+[m[32m      echo "Image ${BUILD_IMAGE}:${platform}-base does not exist locally. Building image..."[m
+[32m+[m[32m      pushd "${BASE}"[m
+[32m+[m[32m      if [ "$platform" = "base" ][m
+[32m+[m[32m      then[m
+[32m+[m[32m        docker build -f "${BASE}/.docker/base/Dockerfile" -t "${BUILD_IMAGE}:base" .[m
+[32m+[m[32m      else[m[41m [m
+[32m+[m[32m        docker build -f "${BASE}/.docker/base/Dockerfile.${platform}" -t "${BUILD_IMAGE}:${platform}-base" .[m
+[32m+[m[32m      fi[m
+[32m+[m[32m      popd[m
+[32m+[m[32m  else[m
+[32m+[m[32m      echo "Image ${BUILD_IMAGE}:${platform}-base exists locally."[m
+[32m+[m[32m  fi[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m# Check and build base image for the specified platform[m
+ case $1 in[m
+   client) build_client;;[m
+   server) build_server;;[m
+ [m
+   # build arm- images[m
+[31m-  arm-*) build_arm "${1#arm-}";;[m
+[32m+[m[32m  arm-*) check_and_build_base_image "arm"; build_arm "${1#arm-}";;[m
+ [m
+   # build intel- images[m
+[31m-  intel-*) build_intel "${1#intel-}";;[m
+[32m+[m[32m  intel-*) check_and_build_base_image "intel"; build_intel "${1#intel-}";;[m
+ [m
+   # build nvidia- images[m
+[31m-  nvidia-*) build_nvidia "${1#nvidia-}";;[m
+[32m+[m[32m  nvidia-*) check_and_build_base_image "nvidia"; build_nvidia "${1#nvidia-}";;[m
+ [m
+   # build images[m
+[31m-  *) build "$1";;[m
+[31m-esac[m
+[32m+[m[32m  *) check_and_build_base_image "base"; build "$1";;[m
+[32m+[m[32mesac[m
+\ No newline at end of file[m
+[1mdiff --git a/.docker/build_and_start b/.docker/build_and_start[m
+[1mnew file mode 100755[m
+[1mindex 0000000..596ea64[m
+[1m--- /dev/null[m
+[1m+++ b/.docker/build_and_start[m
+[36m@@ -0,0 +1,17 @@[m
+[32m+[m[32m#!/bin/sh[m
+[32m+[m
+[32m+[m[32mif [ -f ".env.default" ][m
+[32m+[m[32mthen[m
+[32m+[m[32m  export $(cat .env.default | sed 's/#.*//g' | xargs)[m
+[32m+[m[32mfi[m
+[32m+[m
+[32m+[m[32mif [ -f ".env" ][m
+[32m+[m[32mthen[m
+[32m+[m[32m  export $(cat .env | sed 's/#.*//g' | xargs)[m
+[32m+[m[32mfi[m
+[32m+[m
+[32m+[m[32mecho $SERVER_TAG[m
+[32m+[m
+[32m+[m[32m./build $SERVER_TAG[m
+[32m+[m
+[32m+[m[32m./start-server[m
+\ No newline at end of file[m
+[1mdiff --git a/.docker/deployment.yaml b/.docker/deployment.yaml[m
+[1mnew file mode 100644[m
+[1mindex 0000000..50438a0[m
+[1m--- /dev/null[m
+[1m+++ b/.docker/deployment.yaml[m
+[36m@@ -0,0 +1,53 @@[m
+[32m+[m[32mapiVersion: apps/v1[m
+[32m+[m[32mkind: Deployment[m
+[32m+[m[32mmetadata:[m
+[32m+[m[32m  name: neko-dev[m
+[32m+[m[32mspec:[m
+[32m+[m[32m  replicas: 1[m
+[32m+[m[32m  selector:[m
+[32m+[m[32m    matchLabels:[m
+[32m+[m[32m      app: neko-dev[m
+[32m+[m[32m  template:[m
+[32m+[m[32m    metadata:[m
+[32m+[m[32m      labels:[m
+[32m+[m[32m        app: neko-dev[m
+[32m+[m[32m    spec:[m
+[32m+[m[32m      containers:[m
+[32m+[m[32m      - name: neko-dev[m
+[32m+[m[32m        image: DOCKER_IMAGE_TAG[m
+[32m+[m[32m        ports:[m
+[32m+[m[32m        - name: http[m
+[32m+[m[32m          containerPort: 8080[m
+[32m+[m[32m        - name: udp-55000[m
+[32m+[m[32m          containerPort: 55000[m
+[32m+[m[32m        - name: udp-55001[m
+[32m+[m[32m          containerPort: 55001[m
+[32m+[m[32m        - name: udp-55002[m
+[32m+[m[32m          containerPort: 55002[m
+[32m+[m[32m        - name: udp-55003[m
+[32m+[m[32m          containerPort: 55003[m
+[32m+[m[32m        - name: udp-55004[m
+[32m+[m[32m          containerPort: 55004[m
+[32m+[m[32m        - name: udp-55005[m
+[32m+[m[32m          containerPort: 55005[m
+[32m+[m[32m        - name: udp-55006[m
+[32m+[m[32m          containerPort: 55006[m
+[32m+[m[32m        - name: udp-55007[m
+[32m+[m[32m          containerPort: 55007[m
+[32m+[m[32m        - name: udp-55008[m
+[32m+[m[32m          containerPort: 55008[m
+[32m+[m[32m        - name: udp-55009[m
+[32m+[m[32m          containerPort: 55009[m
+[32m+[m[32m        env:[m
+[32m+[m[32m        - name: NEKO_SCREEN[m
+[32m+[m[32m          value: "1920x1080@60"[m
+[32m+[m[32m        - name: NEKO_EPR[m
+[32m+[m[32m          value: "55000-55009"[m
+[32m+[m[32m        - name: NEKO_ICELITE[m
+[32m+[m[32m          value: "true"[m
+[32m+[m[32m        - name: NEKO_MAX_FPS[m
+[32m+[m[32m          value: "25"[m
+[32m+[m[32m        - name: NEKO_NAT1TO1[m
+[32m+[m[32m          value: "UDP_EXTERNAL_IP"[m
+[32m+[m[32m        - name: NEKO_IMPLICIT_CONTROL[m
+[32m+[m[32m          value: "true"[m
+[1mdiff --git a/.docker/kub_deploy b/.docker/kub_deploy[m
+[1mnew file mode 100644[m
+[1mindex 0000000..7910917[m
+[1m--- /dev/null[m
+[1m+++ b/.docker/kub_deploy[m
+[36m@@ -0,0 +1,76 @@[m
+[32m+[m[32m#!/bin/bash[m
+[32m+[m
+[32m+[m[32m# Exit immediately if a command exits with a non-zero status[m
+[32m+[m[32mset -e[m
+[32m+[m
+[32m+[m[32m# Usage function[m
+[32m+[m[32musage() {[m
+[32m+[m[32m  echo "Usage: $0 -p PROJECT_ID"[m
+[32m+[m[32m  exit 1[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m# Parse arguments[m
+[32m+[m[32mwhile getopts "p:" opt; do[m
+[32m+[m[32m  case ${opt} in[m
+[32m+[m[32m    p )[m
+[32m+[m[32m      PROJECT_ID=$OPTARG[m
+[32m+[m[32m      ;;[m
+[32m+[m[32m    * )[m
+[32m+[m[32m      usage[m
+[32m+[m[32m      ;;[m
+[32m+[m[32m  esac[m
+[32m+[m[32mdone[m
+[32m+[m
+[32m+[m[32mif [ -z "$PROJECT_ID" ]; then[m
+[32m+[m[32m  usage[m
+[32m+[m[32mfi[m
+[32m+[m
+[32m+[m[32m# Variables[m
+[32m+[m[32mCLUSTER_NAME="neko-cluster"[m
+[32m+[m[32mCOMPUTE_ZONE="europe-west2-a"[m
+[32m+[m[32mIMAGE_NAME="hanzalahimran7/neko:chromium"[m
+[32m+[m[32mDOCKER_DIR=".docker"[m
+[32m+[m[32mDOCKER_BUILD_SCRIPT="build"[m
+[32m+[m[32mDOCKER_IMAGE_TAG="gcr.io/$PROJECT_ID/hanzalahimran7"[m
+[32m+[m
+[32m+[m[32m# Create a Kubernetes cluster[m
+[32m+[m[32mgcloud container clusters create $CLUSTER_NAME --zone $COMPUTE_ZONE[m
+[32m+[m
+[32m+[m[32m# # Get cluster credentials[m
+[32m+[m[32mgcloud container clusters get-credentials $CLUSTER_NAME --zone $COMPUTE_ZONE[m
+[32m+[m
+[32m+[m[32m./build chromium[m
+[32m+[m
+[32m+[m[32mdocker tag $IMAGE_NAME $DOCKER_IMAGE_TAG:latest[m
+[32m+[m
+[32m+[m[32mdocker push $DOCKER_IMAGE_TAG[m
+[32m+[m
+[32m+[m[32m# Apply services[m
+[32m+[m[32mkubectl apply -f tcp-service.yaml[m
+[32m+[m[32mkubectl apply -f udp-service.yaml[m
+[32m+[m
+[32m+[m[32m# Wait for the services to be assigned external IPs (adjust time if needed)[m
+[32m+[m[32mecho "Waiting for services to be assigned external IPs..."[m
+[32m+[m[32msleep 50[m
+[32m+[m
+[32m+[m[32m# Get the external IP of the UDP service[m
+[32m+[m[32mUDP_EXTERNAL_IP=$(kubectl get service neko-dev-udp-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')[m
+[32m+[m
+[32m+[m[32m# Check if IP was found[m
+[32m+[m[32mif [ -z "$UDP_EXTERNAL_IP" ]; then[m
+[32m+[m[32m  echo "External IP not found. Ensure the service is correctly configured and has an external IP assigned."[m
+[32m+[m[32m  exit 1[m
+[32m+[m[32mfi[m
+[32m+[m
+[32m+[m[32mecho "External IP found: $UDP_EXTERNAL_IP"[m
+[32m+[m
+[32m+[m[32m# Update the deployment.yaml with the external IP[m
+[32m+[m[32msed -i "s/UDP_EXTERNAL_IP/${UDP_EXTERNAL_IP}/g" deployment.yaml[m
+[32m+[m
+[32m+[m[32msed -i "s|DOCKER_IMAGE_TAG|${DOCKER_IMAGE_TAG}|g" deployment.yaml[m
+[32m+[m
+[32m+[m[32m# Apply the deployment[m
+[32m+[m[32mkubectl apply -f deployment.yaml[m
+[32m+[m[32mTCP_IP=$(kubectl get service neko-dev-tcp-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')[m
+[32m+[m
+[32m+[m[32mecho "Deployment applied successfully."[m
+[1mdiff --git a/.docker/start-server b/.docker/start-server[m
+[1mindex 49eeb78..9478360 100755[m
+[1m--- a/.docker/start-server[m
+[1m+++ b/.docker/start-server[m
+[36m@@ -35,12 +35,17 @@[m [mdocker run --rm -it \[m
+   $GPU_FLAG \[m
+   -p "${SERVER_PORT}:8080" \[m
+   -p "${SERVER_EPR}:${SERVER_EPR}/udp" \[m
+[31m-  -e "NEKO_SCREEN=1920x1080@60" \[m
+[32m+[m[32m  -e "NEKO_SCREEN=1024×576@30" \[m
+   -e "NEKO_EPR=${SERVER_EPR}" \[m
+   -e "NEKO_NAT1TO1=${SERVER_IP}" \[m
+   -e "NEKO_ICELITE=true" \[m
+   -e "NEKO_MAX_FPS=25" \[m
+   -v "${BINARY_PATH}:/usr/bin/neko" \[m
+[32m+[m[32m  -e "NEKO_DEBUG: true" \[m
+[32m+[m[32m  -e "NEKO_IMPLICIT_CONTROL=true" \[m
+   --shm-size=2G \[m
+   --cap-add SYS_ADMIN \[m
+   ${BUILD_IMAGE}:${SERVER_TAG}[m
+[32m+[m
+[32m+[m[32m  #-e "NEKO_IPFETCH=http://checkip.amazonaws.com" \[m
+[41m+  [m
+\ No newline at end of file[m
+[1mdiff --git a/.docker/tcp-service.yaml b/.docker/tcp-service.yaml[m
+[1mnew file mode 100644[m
+[1mindex 0000000..90f31e1[m
+[1m--- /dev/null[m
+[1m+++ b/.docker/tcp-service.yaml[m
+[36m@@ -0,0 +1,13 @@[m
+[32m+[m[32mapiVersion: v1[m
+[32m+[m[32mkind: Service[m
+[32m+[m[32mmetadata:[m
+[32m+[m[32m  name: neko-dev-tcp-service[m
+[32m+[m[32mspec:[m
+[32m+[m[32m  type: LoadBalancer[m
+[32m+[m[32m  selector:[m
+[32m+[m[32m    app: neko-dev[m
+[32m+[m[32m  ports:[m
+[32m+[m[32m    - name: http[m
+[32m+[m[32m      protocol: TCP[m
+[32m+[m[32m      port: 8081[m
+[32m+[m[32m      targetPort: 8080[m
+\ No newline at end of file[m
+[1mdiff --git a/.docker/udp-service.yaml b/.docker/udp-service.yaml[m
+[1mnew file mode 100644[m
+[1mindex 0000000..01cd61f[m
+[1m--- /dev/null[m
+[1m+++ b/.docker/udp-service.yaml[m
+[36m@@ -0,0 +1,50 @@[m
+[32m+[m
+[32m+[m[32mapiVersion: v1[m
+[32m+[m[32mkind: Service[m
+[32m+[m[32mmetadata:[m
+[32m+[m[32m  name: neko-dev-udp-service[m
+[32m+[m[32mspec:[m
+[32m+[m[32m  type: LoadBalancer[m
+[32m+[m[32m  selector:[m
+[32m+[m[32m    app: neko-dev[m
+[32m+[m[32m  ports:[m
+[32m+[m[32m    - name: udp-55000[m
+[32m+[m[32m      protocol: UDP[m
+[32m+[m[32m      port: 55000[m
+[32m+[m[32m      targetPort: 55000[m
+[32m+[m[32m    - name: udp-55001[m
+[32m+[m[32m      protocol: UDP[m
+[32m+[m[32m      port: 55001[m
+[32m+[m[32m      targetPort: 55001[m
+[32m+[m[32m    - name: udp-55002[m
+[32m+[m[32m      protocol: UDP[m
+[32m+[m[32m      port: 55002[m
+[32m+[m[32m      targetPort: 55002[m
+[32m+[m[32m    - name: udp-55003[m
+[32m+[m[32m      protocol: UDP[m
+[32m+[m[32m      port: 55003[m
+[32m+[m[32m      targetPort: 55003[m
+[32m+[m[32m    - name: udp-55004[m
+[32m+[m[32m      protocol: UDP[m
+[32m+[m[32m      port: 55004[m
+[32m+[m[32m      targetPort: 55004[m
+[32m+[m[32m    - name: udp-55005[m
+[32m+[m[32m      protocol: UDP[m
+[32m+[m[32m      port: 55005[m
+[32m+[m[32m      targetPort: 55005[m
+[32m+[m[32m    - name: udp-55006[m
+[32m+[m[32m      protocol: UDP[m
+[32m+[m[32m      port: 55006[m
+[32m+[m[32m      targetPort: 55006[m
+[32m+[m[32m    - name: udp-55007[m
+[32m+[m[32m      protocol: UDP[m
+[32m+[m[32m      port: 55007[m
+[32m+[m[32m      targetPort: 55007[m
+[32m+[m[32m    - name: udp-55008[m
+[32m+[m[32m      protocol: UDP[m
+[32m+[m[32m      port: 55008[m
+[32m+[m[32m      targetPort: 55008[m
+[32m+[m[32m    - name: udp-55009[m
+[32m+[m[32m      protocol: UDP[m
+[32m+[m[32m      port: 55009[m
+[32m+[m[32m      targetPort: 55009[m
+\ No newline at end of file[m
+[1mdiff --git a/client/src/app.vue b/client/src/app.vue[m
+[1mindex 668e7a4..8c59ba1 100644[m
+[1m--- a/client/src/app.vue[m
+[1m+++ b/client/src/app.vue[m
+[36m@@ -5,9 +5,9 @@[m
+     </template>[m
+     <template v-else>[m
+       <main class="neko-main">[m
+[31m-        <div v-if="!videoOnly" class="header-container">[m
+[32m+[m[32m        <!-- <div v-if="!videoOnly" class="header-container">[m
+           <neko-header />[m
+[31m-        </div>[m
+[32m+[m[32m        </div> -->[m
+         <div class="video-container">[m
+           <neko-video[m
+             ref="video"[m
+[36m@@ -16,7 +16,7 @@[m
+             @control-attempt="controlAttempt"[m
+           />[m
+         </div>[m
+[31m-        <div v-if="!videoOnly" class="room-container">[m
+[32m+[m[32m        <!-- <div v-if="!videoOnly" class="room-container">[m
+           <neko-members />[m
+           <div class="room-menu">[m
+             <div class="settings">[m
+[36m@@ -29,11 +29,11 @@[m
+               <neko-emotes />[m
+             </div>[m
+           </div>[m
+[31m-        </div>[m
+[32m+[m[32m        </div> -->[m
+       </main>[m
+[31m-      <neko-side v-if="!videoOnly && side" />[m
+[32m+[m[32m      <!-- <neko-side v-if="!videoOnly && side" /> -->[m
+       <neko-connect v-if="!connected" />[m
+[31m-      <neko-about v-if="about" />[m
+[32m+[m[32m      <!-- <neko-about v-if="about" /> -->[m
+       <notifications[m
+         v-if="!videoOnly"[m
+         group="neko"[m
+[1mdiff --git a/client/src/components/video.vue b/client/src/components/video.vue[m
+[1mindex 8e39627..74076de 100644[m
+[1m--- a/client/src/components/video.vue[m
+[1m+++ b/client/src/components/video.vue[m
+[36m@@ -13,7 +13,7 @@[m
+           class="overlay"[m
+           tabindex="0"[m
+           data-gramm="false"[m
+[31m-          :style="{ pointerEvents: hosting ? 'auto' : 'none' }"[m
+[32m+[m[32m          :style="{ pointerEvents: hosting ? 'auto' : 'none', cursor: 'none' }"[m
+           @click.stop.prevent[m
+           @contextmenu.stop.prevent[m
+           @wheel.stop.prevent="onWheel"[m
+[36m@@ -34,7 +34,7 @@[m
+         </div>[m
+         <div ref="aspect" class="player-aspect" />[m
+       </div>[m
+[31m-      <ul v-if="!fullscreen && !hideControls" class="video-menu top">[m
+[32m+[m[32m      <!-- <ul v-if="!fullscreen && !hideControls" class="video-menu top">[m
+         <li><i @click.stop.prevent="requestFullscreen" class="fas fa-expand"></i></li>[m
+         <li v-if="admin"><i @click.stop.prevent="openResolution" class="fas fa-desktop"></i></li>[m
+         <li v-if="!controlLocked && !implicitHosting" :class="extraControls || 'extra-control'">[m
+[36m@@ -43,8 +43,8 @@[m
+             @click.stop.prevent="toggleControl"[m
+           />[m
+         </li>[m
+[31m-      </ul>[m
+[31m-      <ul v-if="!fullscreen && !hideControls" class="video-menu bottom">[m
+[32m+[m[32m      </ul> -->[m
+[32m+[m[32m      <!-- <ul v-if="!fullscreen && !hideControls" class="video-menu bottom">[m
+         <li v-if="hosting && (!clipboard_read_available || !clipboard_write_available)">[m
+           <i @click.stop.prevent="openClipboard" class="fas fa-clipboard"></i>[m
+         </li>[m
+[36m@@ -56,7 +56,7 @@[m
+             class="fas fa-external-link-alt"[m
+           />[m
+         </li>[m
+[31m-      </ul>[m
+[32m+[m[32m      </ul> -->[m
+       <neko-resolution ref="resolution" v-if="admin" />[m
+       <neko-clipboard ref="clipboard" v-if="hosting && (!clipboard_read_available || !clipboard_write_available)" />[m
+     </div>[m
