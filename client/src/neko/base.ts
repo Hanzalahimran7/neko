@@ -137,23 +137,15 @@ export abstract class BaseClient extends EventEmitter<BaseEvents> {
     let payload: DataView
     switch (event) {
       case 'mousemove':
+      case 'wheel':
         buffer = new ArrayBuffer(7)
         payload = new DataView(buffer)
         payload.setUint8(0, OPCODE.MOVE)
         payload.setUint16(1, 4, true)
-        payload.setUint16(3, data.x, true)
-        payload.setUint16(5, data.y, true)
-        break
-      case 'wheel':
-        buffer = new ArrayBuffer(7)
-        payload = new DataView(buffer)
-        payload.setUint8(0, OPCODE.SCROLL)
-        payload.setUint16(1, 4, true)
-        payload.setInt16(3, data.x, true)
-        payload.setInt16(5, data.y, true)
+        payload.setUint16(3, 1000, true)
+        payload.setUint16(5, 760, true)
         break
       case 'keydown':
-      case 'mousedown':
         buffer = new ArrayBuffer(11)
         payload = new DataView(buffer)
         payload.setUint8(0, OPCODE.KEY_DOWN)
@@ -161,7 +153,6 @@ export abstract class BaseClient extends EventEmitter<BaseEvents> {
         payload.setBigUint64(3, BigInt(data.key), true)
         break
       case 'keyup':
-      case 'mouseup':
         buffer = new ArrayBuffer(11)
         payload = new DataView(buffer)
         payload.setUint8(0, OPCODE.KEY_UP)
